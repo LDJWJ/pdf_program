@@ -143,11 +143,20 @@ class PDFCompressorApp:
             display_name = os.path.basename(file_path)
             if len(display_name) > 35:
                 display_name = "..." + display_name[-32:]
-            self.file_label.config(text=f" {display_name}")
+            # 파일 크기 표시(MB)
+            try:
+                size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                self.file_label.config(text=f" {display_name} ({size_mb:.2f} MB)")
+            except Exception:
+                self.file_label.config(text=f" {display_name}")
 
     def start_compression(self):
         if not self.input_file_path:
             messagebox.showwarning("알림", "먼저 압축할 PDF 파일을 선택해주세요.")
+            return
+        # 입력 파일 확장자 확인
+        if not self.input_file_path.lower().endswith('.pdf'):
+            messagebox.showwarning("알림", "PDF 파일만 압축할 수 있습니다.")
             return
 
         output_path = filedialog.asksaveasfilename(
@@ -160,6 +169,16 @@ class PDFCompressorApp:
         if not output_path:
             return # 사용자가 저장을 취소한 경우
 
+        # 같은 경로로 저장하려는 경우 방지
+        if os.path.abspath(output_path) == os.path.abspath(self.input_file_path):
+            messagebox.showwarning("알림", "원본 파일과 동일한 경로/이름으로 저장할 수 없습니다. 다른 이름을 선택하세요.")
+            return
+
+        # 대상 파일이 이미 존재하면 덮어쓰기 확인
+        if os.path.exists(output_path):
+            if not messagebox.askyesno("덮어쓰기 확인", "선택한 경로에 동일한 파일이 있습니다. 덮어쓰시겠습니까?"):
+                return
+
         quality = self.quality_var.get()
         
         # 압축 실행
@@ -171,9 +190,19 @@ class PDFCompressorApp:
         self.root.config(cursor="") # 마우스 커서 원래대로
         
         if success:
-            original_size = os.path.getsize(self.input_file_path) / (1024 * 1024) # MB
-            compressed_size = os.path.getsize(output_path) / (1024 * 1024) # MB
-            reduction = ((original_size - compressed_size) / original_size) * 100
+            # 크기 계산 및 안전한 감소율 계산
+            try:
+                original_size = os.path.getsize(self.input_file_path) / (1024 * 1024) # MB
+            except Exception:
+                original_size = 0.0
+            try:
+                compressed_size = os.path.getsize(output_path) / (1024 * 1024) # MB
+            except Exception:
+                compressed_size = 0.0
+            if original_size > 0:
+                reduction = ((original_size - compressed_size) / original_size) * 100
+            else:
+                reduction = 0.0
             
             info_message = (
                 f"압축이 완료되었습니다!\n\n"
@@ -182,6 +211,14 @@ class PDFCompressorApp:
                 f"파일 크기 감소율: {reduction:.1f}%"
             )
             messagebox.showinfo("완료", info_message)
+
+            # Windows에서 결과 폴더 열기 여부 확인
+            try:
+                if sys.platform == "win32":
+                    if messagebox.askyesno("폴더 열기", "저장 위치 폴더를 여시겠습니까?"):
+                        os.startfile(os.path.dirname(os.path.abspath(output_path)))
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
